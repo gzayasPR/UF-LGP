@@ -88,9 +88,11 @@ Brahman   	936741
 
 ### Stage 1: Population Preparation (`gbc_setup_unrelated.sh`)
 
-#### Step 1: Process Reference Population
+
 Based on previous analysis, using an unrelated subset of the MAB is the best for PCA and ADMIXTURE/breed composition analysis. 
 Too implement this we need to identify the unrelated subset, which is this current step. For here we do quality control on both the ref and admix population list.
+
+#### Step 1: Process Reference Population
 
 ```bash
 # QC filtering and LD pruning
