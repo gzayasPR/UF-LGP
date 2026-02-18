@@ -49,27 +49,33 @@ geno=0.1    # Max SNP missingness
 ### 2. Reference Population IDs (`reflist`)
 
 **Format:** Two-column space/tab-delimited (FID, IID)
-
+**For UF(Gabe's comment):** I use the MAB + Brahman animals as the reference population. The IDs I currently use are found in the metadata/IDs/MAB.ID. 
 ```
-Family1  Angus001
-Family1  Angus002
-Family2  Brahman001
-Family2  Brahman002
+MAB_BRA	2130309
+MAB_BRA	2130326
+MAB_BRA	2130336
+Brahman	932619
+Brahman	932787
+Brahman	935186
+Brahman	936741
 ```
 
 **Requirements:**
-- Must contain purebred animals only
-- At least 20-30 individuals per breed recommended
-- Should be unrelated or minimally related
+- Animal's FID and IID must match the ones in the PLINK files.
 
 ### 3. Mixed Population IDs (`mixedlist`)
 
 **Format:** Two-column space/tab-delimited (FID, IID)
-
+**For UF(Gabe's comment):** I use the MAB + Brahman but also include our commerical Brangus populations metadata/IDs/admix.ID. 
 ```
-UF  Animal001
-UF  Animal002
-UF  Animal003
+MAB_BRA	3999288
+SeminNutri	1409
+SeminNutri	2447
+SeminThermo	500012
+SeminThermo	500013
+ThermoWes	170006
+ThermoWes	170009
+Brahman	936741
 ```
 
 **Requirements:**
@@ -81,6 +87,8 @@ UF  Animal003
 ### Stage 1: Population Preparation (`gbc_setup_unrelated.sh`)
 
 #### Step 1: Process Reference Population
+Based on previous analysis, using an unrelated subset of the MAB is the best for PCA and ADMIXTURE/breed composition analysis. 
+Too implement this we need to identify the unrelated subset, which is this current step. For here we do quality control on both the ref and admix population list.
 
 ```bash
 # QC filtering and LD pruning
@@ -401,22 +409,14 @@ ls results/[NAME]/Reference.Population/PC_scores_PC1-20.csv
 
 ```bash
 # 1. Prepare sample ID files
-cat > metadata/IDs/MAB.ID << EOF
-REF Angus001
-REF Angus002
-REF Brahman001
-REF Brahman002
-EOF
-
-cat > metadata/IDs/admix.ID << EOF
-UF Animal001
-UF Animal002
-EOF
+metadata/IDs/MAB.ID 
+metadata/IDs/admix.ID 
 
 # 2. Edit breed_composition.sh with paths
-vim bin/pipelines/breed_composition.sh
+bin/pipelines/breed_composition.sh
 
 # 3. Submit pipeline
+Run line by line or you can bash or sbatch
 sbatch bin/pipelines/breed_composition.sh
 
 # 4. Monitor jobs
