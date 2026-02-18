@@ -49,6 +49,7 @@ geno=0.1    # Max SNP missingness
 ### 2. Reference Population IDs (`reflist`)
 
 **Format:** Two-column space/tab-delimited (FID, IID)
+
 **For UF(Gabe's comment):** I use the MAB + Brahman animals as the reference population. The IDs I currently use are found in the metadata/IDs/MAB.ID. 
 ```
 MAB_BRA	2130309
