@@ -119,9 +119,9 @@ GitHub: https://github.com/gzayasPR/UF-LGP
 
 ## Contact
 
-**Author:** G. Zayas  
-**Institution:** University of Florida, Department of Animal Sciences  
-**Email:** gzayas97@ufl.edu
+**Author:** Gabriel Zayas  
+**Institution:** University of Wisconsin-Madison, Department of Animal & Dairy Sciences  
+**Email:** zayas@wisc.edu | gzayas97@ufl.edu (closes May 2026) | gabboz12@gmail.com
 
 For questions or issues, please open a GitHub issue.
 
