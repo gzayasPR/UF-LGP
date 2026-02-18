@@ -67,16 +67,17 @@ Brahman	936741
 ### 3. Mixed Population IDs (`mixedlist`)
 
 **Format:** Two-column space/tab-delimited (FID, IID)
+
 **For UF(Gabe's comment):** I use the MAB + Brahman but also include our commerical Brangus populations metadata/IDs/admix.ID. 
 ```
-MAB_BRA	3999288
+MAB_BRA	    3999288
 SeminNutri	1409
 SeminNutri	2447
 SeminThermo	500012
 SeminThermo	500013
-ThermoWes	170006
-ThermoWes	170009
-Brahman	936741
+ThermoWes	  170006
+ThermoWes	  170009
+Brahman   	936741
 ```
 
 **Requirements:**
