@@ -1,0 +1,16 @@
+# Exclude results and bash output directories
+results/
+bash_out/
+
+# Common temporary and system files
+*.tmp
+*.log
+*~
+.DS_Store
+Thumbs.db
+
+# Editor backup files
+*.swp
+*.swo
+*~
+
