@@ -41,14 +41,18 @@ geno=0.1    # Max SNP missingness
 ### 2. Reference Population (`reflist`)
 
 **Format:** Two-column space/tab-delimited (FID, IID)
+> **Note:** This file should have the IDs for all indviduals that are possible family members. Usually I include the MAB and BRA populations here only. 
 
 ```
-Family1  PotentialDad001
-Family1  PotentialMom001
-Family2  PotentialDad002
+MAB_BRA	2130326
+MAB_BRA	2130336
+Brahman	932619
+Brahman	932787
+Brahman	935186
+Brahman	936741
 ```
 
-**Purpose:** Pool of potential parents to search within
+**Purpose:** Pool of relatives within the population. 
 
 **Best practices:**
 - Include all possible parents
@@ -168,6 +172,9 @@ Individual,Parent,InfType,Kinship,IBS0
 - `InfType` - Relationship type ("PO" for parent-offspring)
 - `Kinship` - Kinship coefficient (~0.25 for parent-offspring)
 - `IBS0` - Proportion of loci with zero alleles shared IBS (~0 for true parent-offspring)
+
+
+> **Note:** If the sample you are looking for parents is in genotype files, AND is in reflist, and that indivdual still isn't getting any hits please check Temp.irem. This file has indivudals filtered out during QC. If there you may have to be lest stringent during quality control. 
 
 ## KING Output Interpretation
 
@@ -369,50 +376,96 @@ Individual,Parent,InfType,Kinship,IBS0
   ```
 
 ## Usage Example
-
 ```bash
-# 1. Create list of individuals to verify
-cat > metadata/check.parentage.ID << EOF
+# Set up environment and parameters
+proj_env="/blue/mateescu/gzayas97/UF-LGP/bin/project_env.sh"
+NAME="Parentage_2026"
+IN_GENO="/blue/mateescu/gzayas97/For_UF/Skim_Seq/data/250K/UF_250K"
+reflist="/blue/mateescu/gzayas97/UF-LGP/metadata/IDs/MAB.ID"
+INDVI_LIST="/blue/mateescu/gzayas97/UF-LGP/metadata/check.parentage.ID"
+account="mateescu"
+CPUS=3
+mem_CPU="12gb"
+max_time="120:00:00"
+maf=0.01
+mind=0.1
+geno=0.1
+
+# Source project environment
+source $proj_env
+
+# Create log directory
+PARENT_log="${my_bash}/${NAME}/"
+mkdir -p $PARENT_log
+
+# Create list of individuals to verify parentage
+cat > $INDVI_LIST << EOF
 2190762
 2210676
 2210764
 EOF
 
-# 2. Verify reference population list exists
-head metadata/IDs/MAB.ID
+# Verify reference population list exists
+head $reflist
 
-# 3. Edit check_parentage.sh with correct paths
-vim bin/pipelines/check_parentage.sh
+# Verify genotype files exist
+ls ${IN_GENO}.bed ${IN_GENO}.bim ${IN_GENO}.fam
 
-# 4. Submit job
-sbatch bin/pipelines/check_parentage.sh
+# Submit KING parentage verification job
+sbatch --account $account  \
+      --job-name="KING_${NAME}" \
+      --cpus-per-task $CPUS \
+      --mem-per-cpu $mem_CPU  \
+      --time=${max_time} \
+      --output="${PARENT_log}/KING_${NAME}_%j.log"  \
+      --error="${PARENT_log}/KING_${NAME}_%j.log"  \
+      ${my_bin}/scripts/king.sh \
+      $proj_env \
+      $NAME \
+      $IN_GENO \
+      $reflist \
+      $INDVI_LIST \
+      $mind \
+      $maf \
+      $geno
 
-# 5. Monitor progress
-tail -f bash_out/Parentage_2026/KING_*.log
+# Monitor job progress
+squeue -u $USER
+tail -f ${PARENT_log}/KING_${NAME}_*.log
 
-# 6. Check results
-cat results/Parentage_2026/parent_offspring_summary.csv
+# Check results when complete
+cat results/${NAME}/parent_offspring_summary.csv
 
-# 7. Review specific individual
-cat results/Parentage_2026/parentage_results/parent_offspring/2190762_parents.txt
+# Review specific individual's results
+cat results/${NAME}/parentage_results/parent_offspring/2190762_parents.txt
 ```
 
-## Batch Processing
+### Expected Input Files
 
-For large numbers of individuals:
-
-```bash
-# Split into batches of 100
-split -l 100 all_individuals.list batch_
-
-# Submit multiple jobs
-for batch in batch_*; do
-  sbatch --export=INDVI_LIST=$batch bin/pipelines/check_parentage.sh
-done
-
-# Combine results
-cat results/Parentage_*/parent_offspring_summary.csv > all_parentage_results.csv
+**Individual verification list** (`$INDVI_LIST`):
 ```
+2190762
+2210676
+2210764
+```
+- One UFID per line
+- No header
+- Must match IDs in genotype files
+
+**Reference population IDs** (`$reflist`):
+```
+MAB_BRA 2130309
+MAB_BRA 2130326
+MAB_BRA 2130336
+...
+```
+- Candidate parents from reference population
+- Format: FID IID
+
+**Genotype files** (`$IN_GENO`):
+- `UF_250K.bed` - Binary genotype data
+- `UF_250K.bim` - SNP information  
+- `UF_250K.fam` - Sample information
 
 ## Dependencies
 
@@ -439,37 +492,11 @@ Default configuration:
 - Memory scales with samples²
 - Runtime scales with samples × SNPs
 
-## Validation
-
-### Cross-Reference with Pedigree
-
-```bash
-# If pedigree data available, compare results
-# Create pedigree file: offspring, sire, dam
-join -1 1 -2 1 <(sort pedigree.txt) <(sort parent_offspring_summary.csv)
-```
-
-### Check for Mendelian Inconsistencies
-
-```bash
-# After verifying parentage, test for inheritance errors
-plink --bfile [genotypes] \
-  --mendel \
-  --set-me-missing \
-  --mendel-duos \
-  --make-bed --out verified_parentage
-```
-
 ## Next Steps
 
 After parentage verification:
 - Update pedigree records
 - Identify pedigree errors or sample swaps
-- Use verified relationships for:
-  - Heritability estimation
-  - Genomic prediction (relationship matrix)
-  - Imputation (family-based)
-  - Quality control (remove duplicates/errors)
 
 ## References
 

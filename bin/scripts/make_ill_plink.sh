@@ -9,6 +9,7 @@ CHR_UPD=$5
 BP_UPD=$6
 INDELS=$7
 ALLELE_POS=$8
+REF_GENOME=$9
 
 source "$proj_env"
 
@@ -106,4 +107,46 @@ plink -cow -bfile mydata3 --update-alleles "$(basename "$INDELS")" --recode --ma
 cd "$out_dir"
 cp -f "./Make_PLINK/UFID_${NAME}_Illumina.ID_ARS."* .
 rm -rf ./Make_PLINK
+echo "Done."
+# Copy final outputs up one level
+cd "$out_dir"
+cp -f "./Make_PLINK/UFID_${NAME}_Illumina.ID_ARS."* .
+rm -rf ./Make_PLINK
+
+echo "Converting PLINK to VCF with reference genome..."
+
+# Load required modules
+ml plink/1.90b3.39
+ml bcftools
+ml htslib  # for bgzip and tabix
+
+# Convert PLINK to VCF using reference genome
+# Using the final output file: UFID_${NAME}_Illumina.ID_ARS
+plink -cow \
+  --bfile "UFID_${NAME}_Illumina.ID_ARS" \
+  --ref-from-fa "$REF_GENOME" \
+  --recode vcf \
+  --out "${NAME}_raw"
+
+# Compress and index the VCF
+bgzip -@ 8 "${NAME}_raw.vcf"
+tabix -p vcf "${NAME}_raw.vcf.gz"
+
+# Use bcftools to correct REF alleles from reference genome
+bcftools +fill-from-fasta "${NAME}_raw.vcf.gz" \
+  -- -c REF -f "$REF_GENOME" \
+  | bgzip -@ 8 > "${NAME}_corrected.vcf.gz"
+
+# Index the corrected VCF
+tabix -p vcf "${NAME}_corrected.vcf.gz"
+
+# Create VCF output directory and copy final files
+mkdir -p "${data}/UF_SkimSeek/VCF"
+cp -f "${NAME}_corrected.vcf.gz"* "${data}/UF_SkimSeek/VCF/"
+
+echo "VCF conversion complete. Files saved to ${data}/UF_SkimSeek/VCF/"
+echo "  - ${NAME}_corrected.vcf.gz"
+echo "  - ${NAME}_corrected.vcf.gz.tbi"
+
+date
 echo "Done."

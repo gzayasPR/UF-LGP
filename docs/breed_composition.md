@@ -15,7 +15,7 @@ Outputs include ancestry proportion estimates and visualizations (Q-plots, PCA w
 **Script:** `bin/pipelines/breed_composition.sh`
 
 This submits two sequential jobs:
-- `gbc_setup_unrelated.sh` - Population preparation
+- `gbc_setup_unrelated.sh` - Prepare Unrelated subset of population reference
 - `gbc_admixture.sh` - ADMIXTURE analysis and visualization
 
 ## Required Configuration
@@ -75,8 +75,8 @@ SeminNutri	1409
 SeminNutri	2447
 SeminThermo	500012
 SeminThermo	500013
-ThermoWes	  170006
-ThermoWes	  170009
+ThermoWes   170006
+ThermoWes   170009
 Brahman   	936741
 ```
 
@@ -89,7 +89,7 @@ Brahman   	936741
 ### Stage 1: Population Preparation (`gbc_setup_unrelated.sh`)
 
 
-Based on previous analysis, using an unrelated subset of the MAB is the best for PCA and ADMIXTURE/breed composition analysis. 
+Based on [previous analysis](https://doi.org/10.3389/fanim.2024.1450639) using an unrelated subset of the MAB is the best for PCA and ADMIXTURE/breed composition analysis.
 Too implement this we need to identify the unrelated subset, which is this current step. For here we do quality control on both the ref and admix population list.
 
 #### Step 1: Process Reference Population
@@ -270,36 +270,38 @@ results/[NAME]/
 ```
 
 ### Ancestry File Format
-
 **`[NAME].combined.ancestry.csv`:**
-
 ```csv
-FID,IID,Pop1,Pop2
+FID,IID,K1,K2
 UF,Animal001,0.75,0.25
 UF,Animal002,0.42,0.58
 ```
 
 Columns:
 - `FID`, `IID` - Family and individual IDs
-- `Pop1` - Proportion from first reference population (e.g., Angus)
-- `Pop2` - Proportion from second reference population (e.g., Brahman)
+- `K1` - Proportion from first reference population (e.g., Angus)
+- `K2` - Proportion from second reference population (e.g., Brahman)
+
+> **Note:** K1 and K2 may switch between Angus and Brahman across runs, so check proportions against a known purebred population. I use the Brahman purebreds as a "reference" to determine which K corresponds to Angus or Brahman.
 
 ## Interpretation
-
 ### Q-Plot
+
+![Q-Plot showing ancestry proportions](./plots/admixture.png)
 
 - **X-axis:** Samples (ordered by ancestry proportion)
 - **Y-axis:** Ancestry proportion (0-1)
 - **Colors:** Different reference populations
-- **Markers:** Unrelated samples (used in supervised mode) are highlighted
+- **Facets:** Different AngusxBrahman Populations
 
 ### PCA Plot
 
+![PCA plot showing population structure](./plots/PCA_Admixture.png)
+
 - **Axes:** PC1 vs PC2 (captures most genetic variation)
 - **Points:** Individual animals
-- **Colors:** Gradient based on ancestry proportion
-- **Clustering:** Reference populations should cluster at extremes
-- **Admixed animals:** Positioned between reference clusters
+- **Clustering:** Each end of PC1 is Brahman vs Angus Breed Composition
+- **Black Dots:** Black dots are the unrelated subset used as reference population.
 
 ### Ancestry Proportions
 
@@ -410,26 +412,96 @@ ls results/[NAME]/Reference.Population/PC_scores_PC1-20.csv
 - Check for coordinate system mismatches
 
 ## Usage Example
-
 ```bash
-# 1. Prepare sample ID files
-metadata/IDs/MAB.ID 
-metadata/IDs/admix.ID 
+# Set up environment and parameters
+proj_env="/blue/mateescu/gzayas97/UF-LGP/bin/project_env.sh"
+NAME="GBC_February_2026"
+IN_GENO="/blue/mateescu/gzayas97/For_UF/Skim_Seq/data/250K/UF_250K"
+mixedlist="/blue/mateescu/gzayas97/UF-LGP/metadata/IDs/admix.ID"
+reflist="/blue/mateescu/gzayas97/UF-LGP/metadata/IDs/MAB.ID"
+account="mateescu"
+CPUS=3
+mem_CPU="12gb"
+max_time="120:00:00"
+maf=0.01
+mind=0.1
+geno=0.1
 
-# 2. Edit breed_composition.sh with paths
-bin/pipelines/breed_composition.sh
+# Source project environment
+source $proj_env
 
-# 3. Submit pipeline
-Run line by line or you can bash or sbatch
-sbatch bin/pipelines/breed_composition.sh
+# Set log directory
+GBC_log="${my_bash}/${NAME}/"
 
-# 4. Monitor jobs
+# Verify input files exist
+head $reflist
+ls ${IN_GENO}.bed ${IN_GENO}.bim ${IN_GENO}.fam
+
+# Step 1: Estimate unrelated subset and run QC
+sbatch --account $account  \
+      --job-name="Est_Unrel_${NAME}" \
+      --cpus-per-task $CPUS \
+      --mem-per-cpu $mem_CPU  \
+      --time=${max_time} \
+      --output="${GBC_log}/Est_Unrel_${NAME}_%j.log"  \
+      --error="${GBC_log}/Est_Unrel_${NAME}_%j.log"  \
+      ${my_bin}/scripts/gbc_setup_unrelated.sh \
+      $proj_env \
+      $NAME \
+      $IN_GENO \
+      $mixedlist \
+      $reflist \
+      $mind \
+      $maf \
+      $geno
+
+# Step 2: Run ADMIXTURE analysis (after Step 1 completes)
+sbatch --account $account  \
+      --job-name="ADMIX_${NAME}" \
+      --cpus-per-task $CPUS \
+      --mem-per-cpu $mem_CPU  \
+      --time=${max_time} \
+      --output="${GBC_log}/ADMIX_${NAME}_%j.log"  \
+      --error="${GBC_log}/ADMIX_${NAME}_%j.log"  \
+      ${my_bin}/scripts/gbc_admixture.sh \
+      $proj_env \
+      $NAME \
+      $IN_GENO \
+      $mixedlist \
+      $reflist \
+      $mind \
+      $maf \
+      $geno
+
+# Monitor jobs
 squeue -u $USER
 
-# 5. Check results
-ls results/GBC_*/Figures/
-cat results/GBC_*/ADMIXTURE/Supervised_Unrelated/*.combined.ancestry.csv
+# Check results when complete
+ls results/${NAME}/Figures/
+cat results/${NAME}/ADMIXTURE/Supervised_Unrelated/*.combined.ancestry.csv
 ```
+
+### Expected Input Files
+
+**Reference population IDs** (`$reflist`):
+```
+MAB_BRA 2130309
+MAB_BRA 2130326
+MAB_BRA 2130336
+...
+```
+
+**Admixed population IDs** (`$mixedlist`):
+```
+UF Animal001
+UF Animal002
+...
+```
+
+**Genotype files** (`$IN_GENO`):
+- `UF_250K.bed` - Binary genotype data
+- `UF_250K.bim` - SNP information
+- `UF_250K.fam` - Sample information
 
 ## Dependencies
 

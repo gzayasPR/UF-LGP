@@ -18,7 +18,6 @@ This pipeline processes multiple Illumina FinalReport files in batch, performing
 ## Required Configuration
 
 Edit the following variables in `illumina_2_plink.sh`:
-
 ```bash
 proj_env="/path/to/bin/project_env.sh"
 NAME="250K_2026"                                    # Output name
@@ -28,64 +27,217 @@ UPDATE_IDS="/path/to/metadata/Feb_2024.txt"        # ID mapping file
 CHR_UPD="/path/to/metadata/ARS.UF.Chr.Update.txt"  # Chromosome updates
 BP_UPD="/path/to/metadata/ARS.BP.2024.txt"         # Base pair positions
 INDELS="/path/to/metadata/INDELS.ID"               # Allele reference
-ALLELE_POS=4                                        # Column for alleles (4=real, 8=Illumina)
+ALLELE_POS=4                                        # Column for alleles (4=Forward, 8=AB)
 ```
 
 ## Input Files
 
 ### 1. Illumina Metadata CSV (`Illumina_meta_csv`)
 
-**Format:** CSV with header `full_path`
+Lists all FinalReport files to process.
 
+**Format:** CSV with header `full_path`
 ```csv
 full_path
 /blue/mateescu/raluca/Univ_of_Florida_Mateescu_BOVF250V1_20160331_FinalReport.txt
 /blue/mateescu/raluca/Univ_of_Florida_Mateescu_BOVF250V1_20160401_FinalReport.txt
 ```
 
+- Each row = one FinalReport file
+- Full absolute paths required
+- No blank lines
+
 ### 2. FinalReport Files
 
-Standard Illumina format with 10-line header:
-- Line 1-9: Metadata (chip info, sample count, etc.)
-- Line 10: Column headers
-- Line 11+: Genotype data (11 columns expected)
+Illumina's standard genotyping output format containing raw genotype calls.
 
-**Expected Columns:**
+**File Structure:**
 ```
-SNP_Name  Sample_ID  Allele1_Top  Allele2_Top  GC_Score  X  Y  Chr  Position  ...
-```
-
-### 3. Reference Files
-
-**SNP_Map.txt:** Maps SNP names to ARS-UCD1.2 coordinates
-```
-SNP_Name    Chr    Position    Allele1    Allele2
-ARS-BFGL-BAC-10172    1    123456    A    G
-```
-
-**UPDATE_IDS:** Maps Sample_ID to standardized IDs
-```
-OldFID  OldIID  NewFID  NewIID
-20160331    Sample001    UFID    Animal001
+[Header]
+GSGT Version    2.0.4
+Processing Date 11/9/2021 9:43 AM
+Content         GGP-F250_20000778_A1.bpm
+Num SNPs        221115
+Total SNPs      221115
+Num Samples     432
+Total Samples   432
+[Data]
+SNP Name        Sample ID       Allele1 - Forward       Allele2 - Forward       Allele1 - Top   Allele2 - Top   Allele1 - AB    Allele2 - AB    GC Score        X       Y
+1-1001021-A-C-rs439448877       Z000812288      A       A       A       A       A       A       0.4616  0.675   0.020
+1-100158803-T-G Z000812288      T       T       A       A       A       A       0.2153  0.112   0.047
+1-100158806-C-G Z000812288      C       C       G       G       B       B       0.1872  0.104   0.564
 ```
 
-**CHR_UPD:** Chromosome name corrections
+**Key Sections:**
+
+- **`[Header]`**: Metadata about the genotyping run
+  - `Content`: SNP chip version (e.g., GGP-F250 = GeneSeek Genomic Profiler 250K)
+  - `Num SNPs`: Number of markers on the chip
+  - `Num Samples`: Animals genotyped in this run
+  
+- **`[Data]`**: Genotype calls (one row per SNP per sample)
+
+**Important Columns:**
+
+| Column | Description | Example | Used By Pipeline |
+|--------|-------------|---------|------------------|
+| `SNP Name` | Marker identifier | `1-1001021-A-C-rs439448877` | YES - SNP ID |
+| `Sample ID` | Animal identifier | `Z000812288` | YES - Individual ID |
+| `Allele1 - Forward` | First allele (forward strand) | `A` | YES (if ALLELE_POS=4) |
+| `Allele2 - Forward` | Second allele (forward strand) | `C` | YES (if ALLELE_POS=4) |
+| `Allele1 - Top` | First allele (TOP strand) | `A` | Optional |
+| `Allele2 - Top` | Second allele (TOP strand) | `C` | Optional |
+| `Allele1 - AB` | First allele (A/B coding) | `A` | YES (if ALLELE_POS=8) |
+| `Allele2 - AB` | Second allele (A/B coding) | `B` | YES (if ALLELE_POS=8) |
+| `GC Score` | Genotype quality score (0-1) | `0.4616` | Used for QC |
+| `X` | Normalized intensity (allele 1) | `0.675` | Used for QC |
+| `Y` | Normalized intensity (allele 2) | `0.020` | Used for QC |
+
+**Allele Coding Systems:**
+
+- **Forward Strand**: Actual DNA sequence orientation (A, C, G, T)
+- **TOP Strand**: Illumina's standardized orientation (A, C, G, T)
+- **AB Coding**: Arbitrary labels (A or B) - chip-specific, not transferable
+
+> **Note:** This pipeline uses **Forward strand alleles** (`ALLELE_POS=4`) by default to maintain consistency with reference genome coordinates. AB coding should only be used if you need chip-specific analysis.
+
+### 3. SNP Map File (`SNP_MAP`)
+
+Maps Illumina SNP names to chromosome and position.
+
+**Format:** Tab-delimited, no header
 ```
-SNP_Name    Chr
-ARS-BFGL-BAC-10172    1
+SNP_Name        Chromosome      Position
+1-1001021-A-C-rs439448877       1       1001021
+1-100158803-T-G 1       100158803
+1-100158806-C-G 1       100158806
 ```
 
-**BP_UPD:** Base pair position updates
+- Column 1: Illumina SNP identifier (matches FinalReport `SNP Name`)
+- Column 2: Chromosome number (1-29, X)
+- Column 3: Base pair position
+
+### 4. ID Mapping File (`UPDATE_IDS`)
+
+Standardizes animal IDs from Illumina lab format to project-specific identifiers.
+
+**Format:** Tab-delimited with header
 ```
-SNP_Name    Position
-ARS-BFGL-BAC-10172    123456
+DateRec  IlluminaID_No_Spaces    PID_No_Spaces     UFID_No_Spaces
+20160331 V_2130309_Plate5_A01    MAB_BRA           2130309
+20160401 3060076                 MAB_BRA           3060076
+20171127 950514                  Brahman           950514
+20220505 Dc_529                  Gonella           Dc_529
+20171228 500163                  SeminThermo       500163
 ```
 
-**INDELS.ID:** Allele corrections (INDEL normalization)
+**Column Definitions:**
+
+- **`DateRec`** (OldFID): Processing date from Illumina FinalReport header
+  - Format: YYYYMMDD
+  - Found in FinalReport file for example:
+      - Univ_of_Florida_Marsella_BOVF250V1_20211108_FinalReport.txt (Date:20211108)
+      - Univ_of_Florida_Mateescu_BOVF250V1_20160331_FinalReport.txt (Date:20160331)
+  - Used as temporary Family ID during conversion
+  
+- **`IlluminaID_No_Spaces`** (OldIID): Sample ID from Illumina FinalReport
+  - Exact match to `Sample ID` column in FinalReport `[Data]` section
+  - May include plate positions (e.g., `V_2130309_Plate5_A01`) or plain IDs
+  - Illumina IDs may have multiple spaces like V 2130309 Plate5 A01 or Dc 529. 
+      - These spaces will be replaced in script with "_". 
+      - Thus when renaming no spaces are permitted in the ID mapping file. 
+  - Lab-assigned identifiers, not standardized across projects
+  
+- **`PID_No_Spaces`** (NewFID): Target project/breed identifier
+  - Examples: `MAB_BRA`, `Brahman`, `Gonella`, `SeminThermo`
+  - Groups animals by breeding program or research project
+  - Used as Family ID in final PLINK files
+  
+- **`UFID_No_Spaces`** (NewIID): University of Florida animal ID
+  - Unique animal identifier
+  - Standardized across all genotyping runs
+  - Used as Individual ID in final PLINK files
+
+**Mapping Logic:**
 ```
-SNP_Name    Allele1    Allele2
-Hapmap43437-BTA-101873    A    G
+Illumina FinalReport                    →    Final PLINK Format
+─────────────────────────────────────────    ──────────────────
+Processing Date: 03/31/2016                  FID: MAB_BRA
+Sample ID: V_2130309_Plate5_A01        →    IID: 2130309
 ```
+
+**Why This Mapping is Needed:**
+
+1. **Date-based batching**: Illumina processes samples in batches by date, not by project
+2. **Lab vs. farm IDs**: Lab uses plate positions; farm uses permanent animal IDs  
+3. **Cross-run consistency**: Same animal may be genotyped multiple times with different lab IDs
+4. **Project organization**: Groups animals by biological/breeding relevance, not processing date
+
+> **Important:** Every unique combination of `DateRec` + `IlluminaID_No_Spaces` in your FinalReports should have a corresponding entry in this file (even if ID is the same), if not you can find them easily in your plink.fam file. 
+
+### 5. Chromosome Update File (`CHR_UPD`)
+
+Corrects chromosome assignments to match reference genome.
+
+**Format:** Tab-delimited, no header
+```
+SNP_Name        Chromosome
+1-1001021-A-C-rs439448877       1
+1-100158803-T-G 1
+```
+
+- Used when original SNP map has outdated or incorrect chromosome assignments
+- Ensures compatibility with ARS-UCD1.2 reference
+
+### 6. Base Pair Update File (`BP_UPD`)
+
+Updates SNP positions to ARS-UCD1.2 reference genome coordinates.
+
+**Format:** Tab-delimited, no header
+```
+SNP_Name        Position
+1-1001021-A-C-rs439448877       1001021
+1-100158803-T-G 100158803
+```
+
+- Critical for accurate variant mapping
+- Positions must match current reference genome build
+
+### 7. Indel Reference File (`INDELS`)
+
+Specifies correct allele coding for insertion/deletion variants.
+
+**Format:** Tab-delimited
+```
+SNP_Name        RefAllele       AltAllele
+rs123456        A       -
+rs789012        -       CGTA
+```
+
+- `-` indicates deletion
+- Multi-base strings indicate insertions
+- Ensures proper variant representation
+
+## Quality Control Notes
+
+**FinalReport Quality Indicators:**
+
+- **GC Score** < 0.15: Low confidence genotype (may be excluded)
+- **X ≈ 0 and Y ≈ 0**: No-call/missing genotype
+- **High X, low Y**: Homozygous for allele 1
+- **Low X, high Y**: Homozygous for allele 2
+- **Moderate X and Y**: Heterozygous
+
+**Common Issues:**
+
+1. **Mismatched SNP counts**: Check if FinalReport contains all expected markers
+2. **Sample ID format changes**: Verify `UPDATE_IDS` file is current
+3. **Coordinate mismatches**: Ensure `BP_UPD` and `CHR_UPD` match reference genome version
+4. **Allele flips**: Pipeline handles strand flips automatically using Forward strand
+
+---
+
+> **Important:** Always verify your `ALLELE_POS` setting matches your analysis needs. Forward strand (column 4) is recommended for compatibility with reference genomes. If using only this you can use Illumina alleles (A/B) which is column 8. 
 
 ## Processing Steps
 
